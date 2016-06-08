@@ -12,10 +12,12 @@
  */
 package org.omnifaces.cdi.param;
 
-import java.io.Serializable;
+import static org.omnifaces.util.Faces.getContext;
+import static org.omnifaces.util.Utils.isEmpty;
 
-import javax.faces.context.FacesContext;
-import javax.faces.convert.Converter;
+import java.io.Serializable;
+import java.lang.reflect.Type;
+import java.util.List;
 
 import org.omnifaces.cdi.Param;
 
@@ -33,27 +35,33 @@ public class ParamValue<V> implements Serializable {
 
 	private static final long serialVersionUID = 1l;
 
-	private final String submittedValue;
-	private final Param requestParameter;
-	private final Class<?> targetType;
+	private final String[] submittedValues;
+	private final Param param;
+	private final Type type;
 
-	private transient V value;
-	private boolean valueSet;
+	private transient List<V> values;
+	private transient V firstValue;
+	private transient boolean valuesSet;
 
-	private V serializableValue;
-	private boolean valueIsSerializable;
+	private boolean valuesAreSerializable;
+	private List<V> serializableValues;
 
-	public ParamValue(String submittedValue, Param requestParameter, Class<?> targetType, V value) {
-		this.submittedValue = submittedValue;
-		this.requestParameter = requestParameter;
-		this.targetType = targetType;
-		this.value = value;
-		valueSet = true;
+	public ParamValue(String[] submittedValues, Param param, Type type, List<V> values) {
+		this.submittedValues = submittedValues;
+		this.param = param;
+		this.type = type;
+		setValues(values);
 
-		if (value instanceof Serializable) {
-			serializableValue = value;
-			valueIsSerializable = true;
+		if (firstValue == null || firstValue instanceof Serializable) {
+			valuesAreSerializable = true;
+			serializableValues = values;
 		}
+	}
+
+	private void setValues(List<V> values) {
+		this.values = values;
+		firstValue = isEmpty(values) ? null : values.get(0);
+		valuesSet = true;
 	}
 
 	/**
@@ -68,40 +76,28 @@ public class ParamValue<V> implements Serializable {
 	@SuppressWarnings("unchecked")
 	public V getValue() {
 
-		if (!valueSet) {
-			// If the value has not been set this instance has recently been de-serialized
+		if (!valuesSet) {
+			// If the value has not been set this instance has recently been de-serialized.
 
-			if (valueIsSerializable) {
-				// The original value was serializable and will thus have been been de-serialized too
-				value = serializableValue;
-			} else {
-
-				// The original value was NOT serializable so we need to generate it from the raw
-				// submitted value again.
-
-				// A converter may not be serializable either, so we obtain a new instance as well.
-				// TODO: Maybe test if converter is serializable and if so keep a reference
-				Converter converter = RequestParameterProducer.getConverter(requestParameter, targetType);
-
-				Object convertedValue;
-				if (converter != null) {
-					FacesContext context = FacesContext.getCurrentInstance();
-					convertedValue = converter.getAsObject(context, context.getViewRoot(), submittedValue);
-				} else {
-					convertedValue = submittedValue;
-				}
-
-				value = (V) convertedValue;
+			if (valuesAreSerializable) {
+				// The original value was serializable and will thus have been been de-serialized too.
+				setValues(serializableValues);
 			}
-
-			valueSet = true;
+			else {
+				// The original value was NOT serializable so we need to generate it from the raw submitted value again.
+				setValues(RequestParameterProducer.<V>getConvertedValues(getContext(), param, "param", submittedValues, type));
+			}
 		}
 
-		return value;
+		return (V) RequestParameterProducer.coerceMultipleValues(values, firstValue, type);
 	}
 
 	public String getSubmittedValue() {
-		return submittedValue;
+		return submittedValues.length > 0 ? submittedValues[0] : null;
+	}
+
+	public String[] getSubmittedValues() {
+		return submittedValues;
 	}
 
 }
