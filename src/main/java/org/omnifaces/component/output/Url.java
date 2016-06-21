@@ -17,17 +17,21 @@ import static org.omnifaces.util.Components.getParams;
 import static org.omnifaces.util.Faces.getRequestDomainURL;
 import static org.omnifaces.util.FacesLocal.getBookmarkableURL;
 import static org.omnifaces.util.FacesLocal.getRequestDomainURL;
+import static org.omnifaces.util.FacesLocal.getRequestURI;
 import static org.omnifaces.util.FacesLocal.setRequestAttribute;
+import static org.omnifaces.util.Servlets.toQueryString;
+import static org.omnifaces.util.Utils.isEmpty;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.List;
+import java.util.Map;
 
 import javax.el.ValueExpression;
 import javax.faces.component.FacesComponent;
 import javax.faces.context.FacesContext;
 
-import org.omnifaces.util.Faces;
 import org.omnifaces.util.State;
 
 /**
@@ -48,21 +52,28 @@ import org.omnifaces.util.State;
  * <h3>Domain</h3>
  * <p>
  * The domain of the URL defaults to the current domain. It is possible to provide a full qualified domain name (FQDN)
- * which the URL is prefixed with. This can be useful if a canonical page shall point to a different domain or a
- * specific subdomain.
+ * via the <code>domain</code> attribute which the URL is to be prefixed with. This can be useful if a canonical page
+ * shall point to a different domain or a specific subdomain.
  * <p>
- * Valid formats and values are:
+ * Valid formats and values for <code>domain</code> attribute are:
  * <ul>
- * <li><code>http://example.com</code></li>
- * <li><code>//example.com</code></li>
- * <li><code>example.com</code></li>
- * <li><code>/</code></li>
- * <li><code>//</code></li>
+ * <li><code>&lt;o:url domain="http://example.com" /&gt;</code></li>
+ * <li><code>&lt;o:url domain="//example.com" /&gt;</code></li>
+ * <li><code>&lt;o:url domain="example.com" /&gt;</code></li>
+ * <li><code>&lt;o:url domain="/" /&gt;</code></li>
+ * <li><code>&lt;o:url domain="//" /&gt;</code></li>
  * </ul>
  * <p>
- * The value will be validated by {@link URL}.
+ * The <code>domain</code> value will be validated by {@link URL} and throw an illegal argument exception when invalid.
  * If the value equals <code>/</code>, then the URL becomes domain-relative.
  * If the value equals or starts with <code>//</code>, or does not contain any scheme, then the URL becomes scheme-relative.
+ *
+ * <h3>Request and view parameters</h3>
+ * <p>You can optionally include all GET request query string parameters or only JSF view parameters in the resulting
+ * URL via <code>includeRequestParams="true"</code> or <code>includeViewParams="true"</code>.
+ * The <code>includeViewParams</code> is ignored when <code>includeRequestParams="true"</code>.
+ * The <code>&lt;f|o:param&gt;</code> will override any included request or view parameters on the same name.
+ *
  *
  * <h3>Usage</h3>
  * <p>
@@ -92,6 +103,7 @@ import org.omnifaces.util.State;
  *
  * @author Bauke Scholtz
  * @since 2.4
+ * @see OutputFamily
  */
 @FacesComponent(Url.COMPONENT_TYPE)
 public class Url extends OutputFamily {
@@ -148,7 +160,9 @@ public class Url extends OutputFamily {
 
 	@Override
 	public void encodeEnd(FacesContext context) throws IOException {
-		String url = getBookmarkableURL(context, getViewId(), getParams(this, isIncludeRequestParams(), isIncludeViewParams()), false);
+		String viewId = getViewId();
+		Map<String, List<String>> params = getParams(this, isIncludeRequestParams(), isIncludeViewParams());
+		String url = (viewId == null) ? getActionURL(context, params) : getBookmarkableURL(context, viewId, params, false);
 		String domain = getDomain();
 
 		if (domain.equals("//")) {
@@ -173,6 +187,13 @@ public class Url extends OutputFamily {
 		else {
 			context.getResponseWriter().writeText(url, null);
 		}
+	}
+
+	private static String getActionURL(FacesContext context, Map<String, List<String>> params) {
+		String url = getRequestURI(context);
+		url = url.isEmpty() ? "/" : url;
+		String queryString = toQueryString(params);
+		return isEmpty(queryString) ? url : url + (url.contains("?") ? "&" : "?") + queryString;
 	}
 
 	// Attribute getters/setters --------------------------------------------------------------------------------------
@@ -214,7 +235,7 @@ public class Url extends OutputFamily {
 	 * @return The view ID to create URL for.
 	 */
 	public String getViewId() {
-		return state.get(PropertyKeys.viewId, Faces.getViewId());
+		return state.get(PropertyKeys.viewId);
 	}
 
 	/**

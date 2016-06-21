@@ -12,12 +12,14 @@
  */
 package org.omnifaces.cdi.param;
 
+import static org.omnifaces.cdi.param.RequestParameterProducer.coerceValues;
+import static org.omnifaces.cdi.param.RequestParameterProducer.getConvertedValues;
 import static org.omnifaces.util.Faces.getContext;
 import static org.omnifaces.util.Utils.isEmpty;
+import static org.omnifaces.util.Utils.isSerializable;
 
 import java.io.Serializable;
 import java.lang.reflect.Type;
-import java.util.List;
 
 import org.omnifaces.cdi.Param;
 
@@ -39,29 +41,27 @@ public class ParamValue<V> implements Serializable {
 	private final Param param;
 	private final Type type;
 
-	private transient List<V> values;
-	private transient V firstValue;
-	private transient boolean valuesSet;
+	private transient V value;
+	private transient boolean valueSet;
 
-	private boolean valuesAreSerializable;
-	private List<V> serializableValues;
+	private boolean valueIsSerializable;
+	private V serializableValue;
 
-	public ParamValue(String[] submittedValues, Param param, Type type, List<V> values) {
+	public ParamValue(String[] submittedValues, Param param, Type type, V value) {
 		this.submittedValues = submittedValues;
 		this.param = param;
 		this.type = type;
-		setValues(values);
+		setValue(value);
 
-		if (firstValue == null || firstValue instanceof Serializable) {
-			valuesAreSerializable = true;
-			serializableValues = values;
+		if (isSerializable(value)) {
+			valueIsSerializable = true;
+			serializableValue = value;
 		}
 	}
 
-	private void setValues(List<V> values) {
-		this.values = values;
-		firstValue = isEmpty(values) ? null : values.get(0);
-		valuesSet = true;
+	private void setValue(V value) {
+		this.value = value;
+		valueSet = true;
 	}
 
 	/**
@@ -76,24 +76,24 @@ public class ParamValue<V> implements Serializable {
 	@SuppressWarnings("unchecked")
 	public V getValue() {
 
-		if (!valuesSet) {
+		if (!valueSet) {
 			// If the value has not been set this instance has recently been de-serialized.
 
-			if (valuesAreSerializable) {
+			if (valueIsSerializable) {
 				// The original value was serializable and will thus have been been de-serialized too.
-				setValues(serializableValues);
+				setValue(serializableValue);
 			}
 			else {
 				// The original value was NOT serializable so we need to generate it from the raw submitted value again.
-				setValues(RequestParameterProducer.<V>getConvertedValues(getContext(), param, "param", submittedValues, type));
+				setValue((V) coerceValues(type, getConvertedValues(getContext(), param, "param", submittedValues, type)));
 			}
 		}
 
-		return (V) RequestParameterProducer.coerceMultipleValues(values, firstValue, type);
+		return value;
 	}
 
 	public String getSubmittedValue() {
-		return submittedValues.length > 0 ? submittedValues[0] : null;
+		return isEmpty(submittedValues) ? null : submittedValues[0];
 	}
 
 	public String[] getSubmittedValues() {
